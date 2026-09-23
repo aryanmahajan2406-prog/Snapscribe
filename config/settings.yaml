@@ -1,0 +1,34 @@
+# SnapScribe configuration
+# Flip execution_provider to QNNExecutionProvider once running on the actual
+# Snapdragon HP device. Everything else stays identical.
+
+execution_provider: CPUExecutionProvider   # CPUExecutionProvider | QNNExecutionProvider
+qnn_backend_path: QnnHtp.dll               # only used when execution_provider is QNN
+
+audio:
+  sample_rate: 16000
+  frame_ms: 30                # VAD frame size
+  silence_timeout_ms: 800      # how long silence ends a speech segment
+  capture_mic: true
+  capture_system_audio: true   # WASAPI loopback
+
+asr:
+  model_dir: models/whisper_base_en
+  language: en
+
+diarization:
+  # v1: channel-based tagging only (mic = "You", loopback = "Them")
+  # v2 (future work): embedding-based multi-speaker clustering on NPU
+  mode: channel_tag
+
+summarizer:
+  model_dir: models/phi-3.5-mini-instruct-onnx/qnn
+  interval_minutes: 3
+  max_summary_tokens: 200
+
+storage:
+  db_path: data/snapscribe.db
+
+ui:
+  show_live_captions: true
+  tray_icon: true

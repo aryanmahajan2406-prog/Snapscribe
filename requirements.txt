@@ -1,0 +1,24 @@
+# Core
+onnxruntime>=1.19.0        # swap to onnxruntime-qnn build on the Snapdragon device
+onnxruntime-genai>=0.4.0   # LLM inference (Phi-3.5) with QNN EP support
+numpy>=1.26
+pyyaml>=6.0
+
+# Audio
+pyaudiowpatch>=0.2.12.6    # WASAPI loopback capture on Windows
+webrtcvad>=2.0.10          # lightweight voice activity detection
+
+# Qualcomm AI Hub (model compile / profile / cloud validation)
+qai-hub>=0.16.0
+qai_hub_models>=0.18.0
+
+# Storage / search
+# sqlite3 is stdlib - no install needed
+
+# UI
+pystray>=0.19.5
+Pillow>=10.0
+# tkinter ships with standard Python on Windows
+
+# Dev-only (CPU fallback testing before hardware access)
+faster-whisper>=1.0.0      # optional: quick CPU dev testing of ASR quality
