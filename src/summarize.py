@@ -32,14 +32,27 @@ class RollingSummarizer:
         self._tokenizer = None
 
     def load(self):
-        import onnxruntime_genai as og
+        if not self.model_dir.exists():
+            print(
+                f"[Summarizer] Model directory '{self.model_dir}' not found. "
+                "Download microsoft/Phi-3.5-mini-instruct-onnx (qnn subfolder) to enable LLM summarization."
+            )
+            return
 
-        self._model = og.Model(str(self.model_dir))
-        self._tokenizer = og.Tokenizer(self._model)
+        try:
+            import onnxruntime_genai as og
+
+            self._model = og.Model(str(self.model_dir))
+            self._tokenizer = og.Tokenizer(self._model)
+        except Exception as e:
+            print(f"[Summarizer] Warning: failed to load onnxruntime-genai model: {e}")
 
     def summarize(self, transcript_text: str) -> str:
         if self._model is None:
-            raise RuntimeError("Call .load() before .summarize()")
+            return (
+                "Summary: [Summarizer model not loaded]\n"
+                "Action items:\n- None"
+            )
 
         import onnxruntime_genai as og
 

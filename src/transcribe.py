@@ -3,7 +3,7 @@ Speech-to-text via Whisper, running on the Hexagon NPU through ONNX Runtime's
 QNN execution provider (falls back to CPU EP during development).
 
 Model source: compiled/profiled via Qualcomm AI Hub
-(qai_hub_models.models.whisper_base_en) — see scripts/export_models.py.
+(qai_hub_models.models.whisper_base) — see scripts/export_models.py.
 """
 
 from pathlib import Path
@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
-from .audio_capture import pcm_bytes_to_float32
+from .audio_capture import SAMPLE_RATE, pcm_bytes_to_float32
 
 
 class WhisperTranscriber:
@@ -39,21 +39,16 @@ class WhisperTranscriber:
            (e.g. quick CPU-only smoke testing).
         """
         try:
-            from qai_hub_models.models.whisper_base_en.app import WhisperApp
-            from qai_hub_models.models.whisper_base_en.model import WhisperBaseEn
+            from qai_hub_models.models._shared.hf_whisper.app import HfWhisperApp
+            from qai_hub_models.models.whisper_base.model import WhisperBase
 
-            provider_options = None
-            providers = [self._execution_provider]
-            if self._execution_provider == "QNNExecutionProvider":
-                provider_options = [{"backend_path": self._qnn_backend_path}]
-
-            model = WhisperBaseEn.from_pretrained()
-            self._app = WhisperApp(
-                model,
-                providers=providers,
-                provider_options=provider_options,
+            model = WhisperBase.from_pretrained()
+            self._app = HfWhisperApp(
+                model.encoder,
+                model.decoder,
+                WhisperBase.get_hf_whisper_version(),
             )
-        except ImportError:
+        except (ImportError, Exception):
             # Raw ONNX Runtime fallback — expects encoder.onnx / decoder.onnx
             # already exported into model_dir.
             providers = [self._execution_provider]
@@ -61,23 +56,28 @@ class WhisperTranscriber:
             if self._execution_provider == "QNNExecutionProvider":
                 provider_options = [{"backend_path": self._qnn_backend_path}]
 
-            self._encoder = ort.InferenceSession(
-                str(self.model_dir / "encoder.onnx"),
-                providers=providers,
-                provider_options=provider_options,
-            )
-            self._decoder = ort.InferenceSession(
-                str(self.model_dir / "decoder.onnx"),
-                providers=providers,
-                provider_options=provider_options,
-            )
+            if (self.model_dir / "encoder.onnx").exists() and (
+                self.model_dir / "decoder.onnx"
+            ).exists():
+                self._encoder = ort.InferenceSession(
+                    str(self.model_dir / "encoder.onnx"),
+                    providers=providers,
+                    provider_options=provider_options,
+                )
+                self._decoder = ort.InferenceSession(
+                    str(self.model_dir / "decoder.onnx"),
+                    providers=providers,
+                    provider_options=provider_options,
+                )
+            else:
+                raise
 
     def transcribe_pcm(self, pcm_bytes: bytes) -> str:
         """Transcribe one speech segment (raw int16 PCM) to text."""
         audio = pcm_bytes_to_float32(pcm_bytes)
 
         if self._app is not None:
-            return self._app.transcribe(audio)
+            return self._app.transcribe(audio, SAMPLE_RATE)
 
         # Minimal raw-ONNX path: real deployments should use the qai_hub_models
         # WhisperApp above, which handles mel-spectrogram + beam search decoding.

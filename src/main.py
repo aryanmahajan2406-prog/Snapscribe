@@ -111,6 +111,8 @@ class SnapScribeApp:
         self._stop_event.set()
         self.capture.stop()
         self.store.close()
+        if self.overlay is not None:
+            self.overlay.stop()
 
 
 def main():

@@ -46,8 +46,19 @@ class CaptionOverlay:
     def push_line(self, speaker: str, text: str):
         self._lines.append(f"{speaker}: {text}")
         self._lines = self._lines[-self.max_lines :]
-        if self._label is not None:
-            self._label.config(text="\n".join(self._lines))
+        if self._label is not None and self._root is not None:
+            text_val = "\n".join(self._lines)
+            try:
+                self._root.after(0, lambda: self._label.config(text=text_val))
+            except Exception:
+                pass
+
+    def stop(self):
+        if self._root is not None:
+            try:
+                self._root.after(0, self._root.destroy)
+            except Exception:
+                pass
 
     def run(self):
         """Blocking — call this on its own thread."""

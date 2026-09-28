@@ -113,9 +113,10 @@ config/
 
 ## Status
 
-Prototype built for the Build & Present Challenge submission. Core pipeline is
-functional against CPU fallback; NPU (QNN) path validated via Qualcomm AI Hub
-cloud-hosted Snapdragon X Elite CRD pending final on-device confirmation.
+Prototype built for the Build & Present Challenge submission. The pipeline
+builds and runs locally on CPU (`CPUExecutionProvider`). NPU performance
+numbers come from Qualcomm AI Hub cloud profiling on a Snapdragon X Elite CRD;
+on-device physical hardware validation is pending access to a Snapdragon laptop.
 
 ## License
 

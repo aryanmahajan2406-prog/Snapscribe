@@ -7,6 +7,13 @@ transcribing dead air all day.
 """
 
 import collections
+import sys
+from unittest.mock import MagicMock
+
+try:
+    import pkg_resources
+except ImportError:
+    sys.modules["pkg_resources"] = MagicMock()
 
 import webrtcvad
 

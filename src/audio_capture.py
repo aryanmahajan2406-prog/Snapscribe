@@ -9,10 +9,12 @@ This channel split is also what src/diarize.py uses for cheap v1 speaker
 tagging, without needing a full diarization model.
 """
 
+import math
 import queue
 import threading
 
 import numpy as np
+from scipy.signal import resample_poly
 
 try:
     import pyaudiowpatch as pyaudio
@@ -40,40 +42,92 @@ class AudioCapture:
         self._stop_event = threading.Event()
 
     def _make_stream(self, device_index: int, channel_label: str):
+        device_info = self._pa.get_device_info_by_index(device_index)
+        native_rate = int(device_info.get("defaultSampleRate", SAMPLE_RATE))
+        is_loopback = device_info.get("isLoopbackDevice", False)
+
+        if is_loopback:
+            channels = int(device_info.get("maxInputChannels", 0))
+            if channels == 0:
+                channels = int(device_info.get("maxOutputChannels", 2))
+            rate = native_rate
+        else:
+            try:
+                test_stream = self._pa.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=SAMPLE_RATE,
+                    input=True,
+                    input_device_index=device_index,
+                )
+                test_stream.close()
+                channels = 1
+                rate = SAMPLE_RATE
+            except Exception:
+                channels = max(1, int(device_info.get("maxInputChannels", 1)))
+                rate = native_rate
+
+        frames_per_buffer = int(rate * 0.03)  # 30ms buffer
+        remainder_pcm = b""
+
         def _callback(in_data, frame_count, time_info, status):
-            self._frames.put((channel_label, in_data))
+            nonlocal remainder_pcm
+            data = np.frombuffer(in_data, dtype=np.int16)
+            if channels > 1:
+                data = data.reshape(-1, channels).mean(axis=1).astype(np.int16)
+
+            if rate != SAMPLE_RATE:
+                gcd = math.gcd(SAMPLE_RATE, rate)
+                data = resample_poly(
+                    data.astype(np.float32), SAMPLE_RATE // gcd, rate // gcd
+                ).astype(np.int16)
+
+            pcm_out = remainder_pcm + data.tobytes()
+            target_bytes = CHUNK_SAMPLES * 2  # 480 samples * 2 bytes = 960 bytes
+
+            offset = 0
+            while offset + target_bytes <= len(pcm_out):
+                chunk = pcm_out[offset : offset + target_bytes]
+                self._frames.put((channel_label, chunk))
+                offset += target_bytes
+            remainder_pcm = pcm_out[offset:]
+
             return (None, pyaudio.paContinue)
 
         return self._pa.open(
             format=pyaudio.paInt16,
-            channels=1,
-            rate=SAMPLE_RATE,
+            channels=channels,
+            rate=rate,
             input=True,
             input_device_index=device_index,
-            frames_per_buffer=CHUNK_SAMPLES,
+            frames_per_buffer=frames_per_buffer,
             stream_callback=_callback,
         )
 
     def start(self):
         if self.capture_mic:
-            mic_info = self._pa.get_default_input_device_info()
-            self._streams.append(self._make_stream(mic_info["index"], "mic"))
+            try:
+                mic_info = self._pa.get_default_input_device_info()
+                self._streams.append(self._make_stream(mic_info["index"], "mic"))
+            except Exception as e:
+                print(f"[AudioCapture] Warning: could not initialize microphone: {e}")
 
         if self.capture_system_audio:
-            # WASAPI loopback device: the default speaker's "loopback" twin,
-            # exposed by pyaudiowpatch.
-            wasapi_info = self._pa.get_host_api_info_by_type(pyaudio.paWASAPI)
-            default_speakers = self._pa.get_device_info_by_index(
-                wasapi_info["defaultOutputDevice"]
-            )
-            if not default_speakers.get("isLoopbackDevice", False):
-                for loopback in self._pa.get_loopback_device_info_generator():
-                    if default_speakers["name"] in loopback["name"]:
-                        default_speakers = loopback
-                        break
-            self._streams.append(
-                self._make_stream(default_speakers["index"], "loopback")
-            )
+            try:
+                wasapi_info = self._pa.get_host_api_info_by_type(pyaudio.paWASAPI)
+                default_speakers = self._pa.get_device_info_by_index(
+                    wasapi_info["defaultOutputDevice"]
+                )
+                if not default_speakers.get("isLoopbackDevice", False):
+                    for loopback in self._pa.get_loopback_device_info_generator():
+                        if default_speakers["name"] in loopback["name"]:
+                            default_speakers = loopback
+                            break
+                self._streams.append(
+                    self._make_stream(default_speakers["index"], "loopback")
+                )
+            except Exception as e:
+                print(f"[AudioCapture] Warning: could not initialize WASAPI loopback: {e}")
 
         for s in self._streams:
             s.start_stream()
